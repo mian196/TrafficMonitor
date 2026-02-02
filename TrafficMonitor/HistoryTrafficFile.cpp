@@ -13,9 +13,14 @@ CHistoryTrafficFile::~CHistoryTrafficFile()
 
 void CHistoryTrafficFile::Save() const
 {
-	ofstream file{ m_file_path };
+	// Save to a temporary file first to prevent data loss on crash (Atomic Save)
+	wstring temp_path = m_file_path + L".tmp";
+	ofstream file{ temp_path };
+	if (!file.is_open())
+		return;
+
 	char buff[64];
-	sprintf_s(buff, "lines: \"%u\"", static_cast<unsigned int>(m_history_traffics.size()));			//在第一行写入总行数
+	sprintf_s(buff, "lines: \"%u\"", static_cast<unsigned int>(m_history_traffics.size()));			// Write the total number of lines in the first line
 	file << buff << std::endl;
 	for (const auto& history_traffic : m_history_traffics)
 	{
@@ -25,7 +30,19 @@ void CHistoryTrafficFile::Save() const
 			sprintf_s(buff, "%.4d/%.2d/%.2d %llu/%llu", history_traffic.year, history_traffic.month, history_traffic.day, history_traffic.up_kBytes, history_traffic.down_kBytes);
 		file << buff << std::endl;
 	}
+	
+	bool write_success = file.good();
 	file.close();
+
+	// Atomically replace the original file
+	if (write_success)
+	{
+		MoveFileEx(temp_path.c_str(), m_file_path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH | MOVEFILE_COPY_ALLOWED);
+	}
+	else
+	{
+		DeleteFile(temp_path.c_str());
+	}
 }
 
 void CHistoryTrafficFile::Load()
@@ -38,7 +55,7 @@ void CHistoryTrafficFile::Load()
 	{
 		while (!file.eof())
 		{
-			if (m_history_traffics.size() > 9999) break;		//最多读取10000天的历史记录
+			if (m_history_traffics.size() > 9999) break;		// Read up to 10000 days of history records
 			std::getline(file, current_line);
 			//if (first_line)
 			//{
@@ -97,7 +114,7 @@ void CHistoryTrafficFile::LoadSize()
 	string current_line, temp;
 	if (CCommon::FileExist(m_file_path.c_str()))
 	{
-		std::getline(file, current_line);			//读取第一行
+		std::getline(file, current_line);			// Read the first line
 		size_t index = current_line.find("lines:");
 		if (index != wstring::npos)
 		{
@@ -115,7 +132,7 @@ void CHistoryTrafficFile::Merge(const CHistoryTrafficFile& history_traffic, bool
 	{
 		if(ignore_same_data)
 		{
-			//如果要忽略相同日期的项，则使用二分法查找日期相同的项，如果找到了，则跳过它
+			// If ignoring items with the same date, use binary search to find the item with the same date. If found, skip it.
 			if (std::binary_search(m_history_traffics.begin(), m_history_traffics.end(), traffic, HistoryTraffic::DateGreater))
 			{
 				auto iter = std::lower_bound(m_history_traffics.begin(), m_history_traffics.end(), traffic, HistoryTraffic::DateGreater);
@@ -149,10 +166,10 @@ void CHistoryTrafficFile::MormalizeData()
 
 	if (m_history_traffics.size() >= 2)
 	{
-		//将读取到的历史流量列表按日期从大到小排序
+		// Sort the read history traffic list by date in descending order
 		std::sort(m_history_traffics.begin(), m_history_traffics.end(), HistoryTraffic::DateGreater);
 
-		//如果列表中有相同日期的项目，则将它合并
+		// If there are items with the same date in the list, merge them
 		for (int i{}; i < static_cast<int>(m_history_traffics.size() - 1); i++)
 		{
 			if (HistoryTraffic::DateEqual(m_history_traffics[i], m_history_traffics[i + 1]))
@@ -164,7 +181,7 @@ void CHistoryTrafficFile::MormalizeData()
 		}
 	}
 
-	//如果列表第一个项目的日期是今天，则将第一个项目统计的流量作为今天使用的流量，否则，在列表的前面插入一个日期为今天的项目
+	// If the date of the first item in the list is today, use its traffic as today's usage. Otherwise, insert a new item for today at the front.
 	if (HistoryTraffic::DateEqual(m_history_traffics[0], traffic))
 	{
 		m_today_up_traffic = static_cast<__int64>(m_history_traffics[0].up_kBytes) * 1024;
