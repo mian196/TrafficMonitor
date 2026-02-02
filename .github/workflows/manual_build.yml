@@ -1,0 +1,89 @@
+name: Manual Build
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  manual_build:
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        platform: [x64, x86, ARM64EC]
+        
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Add msbuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Run msbuild (x64)
+      if: matrix.platform == 'x64'
+      run: msbuild -p:configuration=release -p:platform=x64 -p:platformToolset=v143
+
+    - name: Run msbuild (x86)
+      if: matrix.platform == 'x86'
+      run: msbuild -p:configuration=release -p:platform=x86 -p:platformToolset=v143
+      
+    - name: Run msbuild (ARM64EC)
+      if: matrix.platform == 'ARM64EC'
+      run: msbuild -p:configuration=release -p:platform=ARM64EC -p:platformToolset=v143
+
+    - name: Move dll file path for ARM64EC
+      if: matrix.platform == 'ARM64EC'
+      run: mv Bin/x64/Release/*.dll  Bin/ARM64EC/Release/
+
+    - name: Get current time
+      uses: josStorer/get-current-time@v2.0.2
+      id: current-time
+      with:
+        format: YYYYMMDD_HHmmss
+        utcOffset: "+08:00"
+
+    - name: Upload artifact (x64)
+      if: matrix.platform == 'x64'
+      uses: actions/upload-artifact@v4
+      with:
+        name: x64_${{ steps.current-time.outputs.formattedTime }}_TrafficMonitor
+        path: |
+          Bin/x64/Release/TrafficMonitor.exe
+          Bin/x64/Release/*.dll
+
+    - name: Upload artifact (x86)
+      if: matrix.platform == 'x86'
+      uses: actions/upload-artifact@v4
+      with:
+        name: x86_${{ steps.current-time.outputs.formattedTime }}_TrafficMonitor
+        path: |
+          Bin/Release/TrafficMonitor.exe
+          Bin/Release/*.dll
+
+    - name: Upload artifact (ARM64EC)
+      if: matrix.platform == 'ARM64EC'
+      uses: actions/upload-artifact@v4
+      with:
+        name: arm64EC_${{ steps.current-time.outputs.formattedTime }}_TrafficMonitor
+        path: |
+          Bin/ARM64EC/Release/TrafficMonitor.exe
+          Bin/ARM64EC/Release/*.dll
+
+    - name: Upload pdb files (x64)
+      if: matrix.platform == 'x64'
+      uses: actions/upload-artifact@v4
+      with:
+        name: x64_${{ steps.current-time.outputs.formattedTime }}_pdb
+        path: Bin/x64/Release/*.pdb
+
+    - name: Upload pdb files (x86)
+      if: matrix.platform == 'x86'
+      uses: actions/upload-artifact@v4
+      with:
+        name: x86_${{ steps.current-time.outputs.formattedTime }}_pdb
+        path: Bin/Release/*.pdb
+
+    - name: Upload pdb files (ARM64EC)
+      if: matrix.platform == 'ARM64EC'
+      uses: actions/upload-artifact@v4
+      with:
+        name: arm64EC_${{ steps.current-time.outputs.formattedTime }}_pdb
+        path: Bin/ARM64EC/Release/*.pdb
